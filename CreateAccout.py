@@ -889,18 +889,26 @@ def leavequeue(PlayerToken: str):
             match.PlayersInQueue -= 1
             print(f"Player {PlayerToken} left match {match_id}")
             
-            # If the host left, assign new host
+            # HOST MIGRATION: If the host left, assign new random host
             if match.HostPlayerID == PlayerToken:
                 if match.Players:  # If there are still players
-                    match.HostPlayerID = match.Players[0]
-                    print(f"New host for match {match_id}: {match.HostPlayerID}")
+                    # Select random player as new host
+                    import random
+                    new_host = random.choice(match.Players)
+                    old_host_ip = match.HostIP
+                    match.HostPlayerID = new_host
+                    match.HostIP = None  # New host needs to set their IP
+                    print(f"🔄 HOST MIGRATION: New host for match {match_id}: {new_host} (replacing {PlayerToken})")
+                    print(f"   Previous host IP {old_host_ip} is now invalid - new host must set IP")
                 else:
                     match.HostPlayerID = None
+                    match.HostIP = None
+                    print(f"Match {match_id} has no players left - host cleared")
                     
             # Fill the spot if match hasn't started
             if not match.Started:
                 fillqueue(match_id)
-            return {"log": "OK", "message": "Left match"}
+            return {"log": "OK", "message": "Left match", "hostMigrated": match.HostPlayerID != PlayerToken if PlayerToken in [match.HostPlayerID] else False}
     
     # Check if player is in general queue
     player_id = None
@@ -992,6 +1000,31 @@ def setHostIP(MatchID: int, HostIP: str):
         return {"log": "ok"}
     return {"log": "error", "message": "Match not found"}
 
+def getServerInfo():
+    """Get server information including Replit domain"""
+    import os
+    replit_domain = os.getenv('REPLIT_DEV_DOMAIN', 'localhost')
+    return {
+        "log": "ok",
+        "server_domain": f"https://{replit_domain}",
+        "api_base": f"https://{replit_domain}",
+        "websocket_url": f"wss://{replit_domain}",
+        "environment": "replit"
+    }
+
+def migrateHostManually(MatchID: int, NewHostPlayerID: str):
+    """Manually migrate host to specific player (admin function)"""
+    if MatchID in MatchQueues:
+        match = MatchQueues[MatchID]
+        if NewHostPlayerID in match.Players:
+            old_host = match.HostPlayerID
+            match.HostPlayerID = NewHostPlayerID
+            match.HostIP = None  # New host must set their IP
+            print(f"🔄 MANUAL HOST MIGRATION: Match {MatchID} host changed from {old_host} to {NewHostPlayerID}")
+            return {"log": "ok", "oldHost": old_host, "newHost": NewHostPlayerID}
+        return {"log": "error", "message": "New host player not in match"}
+    return {"log": "error", "message": "Match not found"}
+
 # Token-based matchmaking API endpoints
 @app.get("/matchmaking/findmatch")
 def appfindmatch(Token: str = None):
@@ -1016,6 +1049,18 @@ def appsetHostIP(Token: str, MatchID: int, HostIP: str):
     if MatchID in MatchQueues and MatchQueues[MatchID].HostPlayerID == player_id:
         return setHostIP(MatchID, HostIP)
     return {"log": "error", "message": "Not the host of this match"}
+
+@app.get("/server/info")
+def appgetserverinfo():
+    """Get server and connection information"""
+    return getServerInfo()
+
+@app.get("/matchmaking/dev/migratehost")
+def appmigratehost(Pass: str, MatchID: int, NewHostPlayerID: str):
+    """Admin function to manually migrate host"""
+    if Pass == "azertyuiop":
+        return migrateHostManually(MatchID, NewHostPlayerID)
+    return {"log": "error", "message": "Invalid admin password"}
 
 @app.get("/matchmaking/leavequeue")
 def appleavequeue(Token: str):
@@ -1066,6 +1111,6 @@ async def on_startup():
     
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
