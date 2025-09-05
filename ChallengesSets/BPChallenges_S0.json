@@ -1,0 +1,18 @@
+{
+	"ChallengeCount": 7,
+	"SetName": "Week 0",
+	"ChallengesToGetReward": 4,
+	"Reward": {
+		"RewardID": 0,
+		"Amount": 200,
+		"Name": ""
+	},
+	"ChallengeList":[{"ChallengeName": "PlaceBuilds", "AmountToDo": 200, "Reward":{"RewardID": 2, "Amount": 5, "Name": ""}},
+	{"ChallengeName": "ApplyShields", "AmountToDo": 200, "Reward":{"RewardID": 2, "Amount": 5, "Name": ""}},
+	{"ChallengeName": "DealDmgAR", "AmountToDo": 500, "Reward":{"RewardID": 2, "Amount": 5, "Name": ""}},
+	{"ChallengeName": "Top5", "AmountToDo": 1, "Reward":{"RewardID": 2, "Amount": 5, "Name": ""}},
+	{"ChallengeName": "ElimsSG", "AmountToDo": 4, "Reward":{"RewardID": 2, "Amount": 10, "Name": ""}},
+	{"ChallengeName": "OpenLLamas", "AmountToDo": 3, "Reward":{"RewardID": 2, "Amount": 10, "Name": ""}},
+	{"ChallengeName": "DealDmgTrap", "AmountToDo": 150, "Reward":{"RewardID": 2, "Amount": 10, "Name": ""}}
+	]
+}

@@ -1,0 +1,1 @@
+curl "http://26.7.218.233:1234/matchmaking/dev/startmatch?Pass=azertyuiop&MatchID=1096194"

@@ -1,0 +1,11 @@
+{
+	"ChallengeCount": 1,
+	"SetName": "",
+	"ChallengesToGetReward": 1,
+	"Reward": {
+		"RewardID": 0,
+		"Amount": 0,
+		"Name": ""
+	},
+	"ChallengeList":[{"ChallengeName": "Default", "AmountToDo": 400, "Reward":{"RewardID": 0, "Amount": 0, "Name": ""}}]
+}

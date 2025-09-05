@@ -1,0 +1,18 @@
+{
+	"ChallengeCount": 7,
+	"SetName": "Tier 2 Challenges",
+	"ChallengesToGetReward": 5,
+	"Reward": {
+		"RewardID": 2,
+		"Amount": 50,
+		"Name": ""
+	},
+	"ChallengeList":[{"ChallengeName": "OutlastOpp", "AmountToDo": 500, "Reward":{"RewardID": 2, "Amount": 10, "Name": ""}},
+	{"ChallengeName": "OpenChests", "AmountToDo": 50, "Reward":{"RewardID": 2, "Amount": 10, "Name": ""}},
+	{"ChallengeName": "OpenAmmo", "AmountToDo": 70, "Reward":{"RewardID": 2, "Amount": 10, "Name": ""}},
+	{"ChallengeName": "Elims", "AmountToDo": 20, "Reward":{"RewardID": 2, "Amount": 20, "Name": ""}},
+	{"ChallengeName": "DealDmg", "AmountToDo": 10000, "Reward":{"RewardID": 2, "Amount": 20, "Name": ""}},
+	{"ChallengeName": "Top5", "AmountToDo": 5, "Reward":{"RewardID": 2, "Amount": 20, "Name": ""}},
+	{"ChallengeName": "Top1", "AmountToDo": 1, "Reward":{"RewardID": 5, "Amount": 0, "Name": "Solo_Umbrella"}}
+	]
+}
