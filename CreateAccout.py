@@ -767,13 +767,15 @@ def addemote(Player: str, Name: str):
 scheduler = sched.scheduler(time.time, time.sleep)
 
 class MatchQueue:
-    def __init__(self, ServerIP: str, MaxPlayers: int, MaxTime: int, MatchID:int):
-        self.ServerIP = ServerIP
+    def __init__(self, MaxPlayers: int = 15, MaxTime: int = 120, MatchID: int = None):
         self.MaxPlayers = MaxPlayers
         self.MaxTime = MaxTime
         self.Started = False
-        self.MatchID=MatchID
+        self.MatchID = MatchID or random.randint(1000000, 9999999)
         self.PlayersInQueue = 0
+        self.Players = []  # List to track players in the match
+        self.HostPlayerID = None  # First player becomes host
+        self.HostIP = None  # Host's IP address for listen server
         #if MaxTime != 0:
         #    print("Delay of", MaxTime,"seconds")
         #    scheduler.enter(delay=MaxTime, action=MatchTimeOut, argument=(MatchID,), priority=1)
@@ -806,15 +808,14 @@ def stop_server():
 
 
 
-def creatematchqueue(ServIP: str, MaxPlrs: int, MaxTme: int):
-    MatchID:int = random.randint(1000000, 9999999)
-    tempmatch = MatchQueue(ServerIP=ServIP, MaxPlayers=MaxPlrs, MaxTime=MaxTme, MatchID=MatchID)
-    MatchQueues[MatchID] = tempmatch
-    print("MATCH CREATED Created match with ID", MatchID)
-    fillqueue(MatchID)
-    if MaxTme > 0:
-        main_loop.create_task(starttimeouttimer(MatchID, MaxTme))
-    return MatchID
+def creatematchqueue(MaxPlrs: int = 15, MaxTme: int = 120):
+    tempmatch = MatchQueue(MaxPlayers=MaxPlrs, MaxTime=MaxTme)
+    MatchQueues[tempmatch.MatchID] = tempmatch
+    print("LISTEN SERVER MATCH CREATED with ID", tempmatch.MatchID, "- Max Players:", MaxPlrs)
+    fillqueue(tempmatch.MatchID)
+    if MaxTme > 0 and main_loop:
+        main_loop.create_task(starttimeouttimer(tempmatch.MatchID, MaxTme))
+    return tempmatch.MatchID
 
 async def starttimeouttimer(MatchID: int, Time: int):
     print("Started time out timer for match", MatchID)
@@ -829,14 +830,13 @@ def MatchTimeOut(MatchID:int):
             print("Match", MatchID, "timed out.")
     return
 
-def StartMatch(MatchID:int):
+def StartMatch(MatchID: int):
     if MatchID in MatchQueues:
         if not MatchQueues[MatchID].Started:
-            start_server()
             MatchQueues[MatchID].Started = True
-            print("Match", MatchID, "started")
-            main_loop.create_task(startdeletetimer(MatchID))
-            
+            print("LISTEN SERVER Match", MatchID, "started with host:", MatchQueues[MatchID].HostPlayerID)
+            if main_loop:
+                main_loop.create_task(startdeletetimer(MatchID))
     return
 
 async def startdeletetimer(MatchID: int):
@@ -850,40 +850,95 @@ def DeleteMatchFromList(MatchID:int):
     print("MatchMaking : Removed match", MatchID, "from the list")
     return
 
-def findmatch():
-    if MatchQueues:
-        for i in MatchQueues.values():
-            if not i.Started:
-                i.PlayersInQueue += 1
-                if i.PlayersInQueue == i.MaxPlayers:
-                    StartMatch(MatchQueues[list(MatchQueues)[i]])
-                return {"MatchID":i.MatchID}
-    MatchmakerPlayerID:int = random.randint(1000000, 9999999)
-    PlayerQueue.append(MatchmakerPlayerID)
-    return {"MatchmakerPlayerID": MatchmakerPlayerID}
+def findmatch(PlayerToken: str = None):
+    # Look for an available match that's not full and not started
+    for match in MatchQueues.values():
+        if not match.Started and match.PlayersInQueue < match.MaxPlayers:
+            # Add player to match
+            match.PlayersInQueue += 1
+            if PlayerToken:
+                match.Players.append(PlayerToken)
+                # First player becomes the host
+                if match.HostPlayerID is None:
+                    match.HostPlayerID = PlayerToken
+                    print(f"Player {PlayerToken} is now HOST for match {match.MatchID}")
+                else:
+                    print(f"Player {PlayerToken} joined match {match.MatchID} as CLIENT")
+            
+            # Start match if it's full (15 players)
+            if match.PlayersInQueue >= match.MaxPlayers:
+                StartMatch(match.MatchID)
+            
+            return {
+                "MatchID": match.MatchID,
+                "IsHost": match.HostPlayerID == PlayerToken,
+                "PlayersInMatch": match.PlayersInQueue,
+                "MaxPlayers": match.MaxPlayers
+            }
     
-def leavequeue(MatchOrPlayerID:int):
-    if MatchOrPlayerID in MatchQueues:
-        MatchQueues[MatchOrPlayerID].PlayersInQueue -= 1
-        fillqueue(MatchOrPlayerID)
-    elif MatchOrPlayerID in PlayerQueue:
-        PlayerQueue.remove(MatchOrPlayerID)
-    elif MatchOrPlayerID in PlayerMoved:
-        tempPlayer = PlayerMoved[MatchOrPlayerID]
-        del PlayerMoved[MatchOrPlayerID]
-        leavequeue(tempPlayer)
-    return {"Log": "OK"}
+    # No available match found, create a new one
+    new_match_id = creatematchqueue()
+    # Try to join the newly created match
+    return findmatch(PlayerToken)
+    
+def leavequeue(PlayerToken: str):
+    # Find and remove player from any match they're in
+    for match_id, match in MatchQueues.items():
+        if PlayerToken in match.Players:
+            match.Players.remove(PlayerToken)
+            match.PlayersInQueue -= 1
+            print(f"Player {PlayerToken} left match {match_id}")
+            
+            # If the host left, assign new host
+            if match.HostPlayerID == PlayerToken:
+                if match.Players:  # If there are still players
+                    match.HostPlayerID = match.Players[0]
+                    print(f"New host for match {match_id}: {match.HostPlayerID}")
+                else:
+                    match.HostPlayerID = None
+                    
+            # Fill the spot if match hasn't started
+            if not match.Started:
+                fillqueue(match_id)
+            return {"log": "OK", "message": "Left match"}
+    
+    # Check if player is in general queue
+    player_id = None
+    try:
+        player_id = int(PlayerToken)
+    except:
+        pass
+        
+    if player_id and player_id in PlayerQueue:
+        PlayerQueue.remove(player_id)
+        return {"log": "OK", "message": "Left general queue"}
+    
+    if player_id and player_id in PlayerMoved:
+        match_id = PlayerMoved[player_id]
+        del PlayerMoved[player_id]
+        return leavequeue(str(match_id))
+        
+    return {"log": "Player not found in any queue"}
 
-def fillqueue(MatchID:int):
-    for i in range(MatchQueues[MatchID].MaxPlayers-MatchQueues[MatchID].PlayersInQueue):
-        if PlayerQueue:
-            PlayerMoved[PlayerQueue[0]] = MatchID
-            del PlayerQueue[0]
-        else:
-            MatchQueues[MatchID].PlayersInQueue += 1
-            if MatchQueues[MatchID].PlayersInQueue == MatchQueues[MatchID].MaxPlayers:
-                    StartMatch(MatchID)
-            return
+def fillqueue(MatchID: int):
+    # Fill match with players from the general queue
+    if MatchID in MatchQueues:
+        match = MatchQueues[MatchID]
+        while match.PlayersInQueue < match.MaxPlayers and PlayerQueue:
+            player_id = PlayerQueue.pop(0)
+            match.PlayersInQueue += 1
+            match.Players.append(str(player_id))
+            PlayerMoved[player_id] = MatchID
+            
+            # Set first player as host if no host yet
+            if match.HostPlayerID is None:
+                match.HostPlayerID = str(player_id)
+                print(f"Player {player_id} is now HOST for match {MatchID}")
+                
+            # Start match if full
+            if match.PlayersInQueue >= match.MaxPlayers:
+                StartMatch(MatchID)
+                break
     return
 
 def getfindmatchstate(MatchmakerPlayerID:int):
@@ -896,19 +951,32 @@ def getfindmatchstate(MatchmakerPlayerID:int):
         return{"log": "FoundMatch","MatchID": TempMatchID,"PlayersInQueue": TempPlayersInQueue}
     return {"log": "MatchmakerPlayerID not found"}
 
-def getmatchstate(MatchID:int):
+def getmatchstate(MatchID: int):
     if MatchID in MatchQueues:
-        if MatchQueues[MatchID].Started:
-            print("Sent server IP :", MatchQueues[MatchID].ServerIP)
-            return {"log": "ok", "ServerIP": MatchQueues[MatchID].ServerIP}
-        else :
-            return {"log": "ok", "PlayersInQueue": MatchQueues[MatchID].PlayersInQueue}
-    return {"log": "error"}
+        match = MatchQueues[MatchID]
+        if match.Started:
+            return {
+                "log": "ok", 
+                "status": "started",
+                "HostIP": match.HostIP,
+                "HostPlayerID": match.HostPlayerID,
+                "PlayersInMatch": match.PlayersInQueue,
+                "MaxPlayers": match.MaxPlayers
+            }
+        else:
+            return {
+                "log": "ok", 
+                "status": "waiting",
+                "PlayersInQueue": match.PlayersInQueue,
+                "MaxPlayers": match.MaxPlayers,
+                "HostPlayerID": match.HostPlayerID
+            }
+    return {"log": "error", "message": "Match not found"}
 
 @app.get("/matchmaking/dev/creatematch")   #Called by a bat file for now
-def appcreatematch(Pass: str, ServerIP: str, MaxPlayers: int, MaxTime: int):
+def appcreatematch(Pass: str, MaxPlayers: int = 15, MaxTime: int = 120):
     if Pass == "azertyuiop":
-        return creatematchqueue(ServIP=ServerIP, MaxPlrs=MaxPlayers, MaxTme=MaxTime)
+        return creatematchqueue(MaxPlrs=MaxPlayers, MaxTme=MaxTime)
     
 @app.get("/matchmaking/dev/startmatch")    #Called by a bat file if the launch is not automatic
 def appstartmatch(MatchID:int, Pass: str):
@@ -916,17 +984,67 @@ def appstartmatch(MatchID:int, Pass: str):
         #return StartMatch(MatchID=MatchID)
         return StartMatch(list(MatchQueues.keys())[0])
     
+# New listen server functions
+def setHostIP(MatchID: int, HostIP: str):
+    if MatchID in MatchQueues:
+        MatchQueues[MatchID].HostIP = HostIP
+        print(f"Host IP set for match {MatchID}: {HostIP}")
+        return {"log": "ok"}
+    return {"log": "error", "message": "Match not found"}
+
+# Token-based matchmaking API endpoints
 @app.get("/matchmaking/findmatch")
-def appfindmatch():
-    return findmatch()
+def appfindmatch(Token: str = None):
+    if Token:
+        # Get username from token for tracking
+        JFile = getuserfilebytoken(Token)
+        if JFile == "MissingToken":
+            return {"log": "Invalid token"}
+        player_id = JFile["AccountName"]
+    else:
+        player_id = None
+    return findmatch(player_id)
+
+@app.get("/matchmaking/setHostIP")
+def appsetHostIP(Token: str, MatchID: int, HostIP: str):
+    # Verify the player is the host of this match
+    JFile = getuserfilebytoken(Token)
+    if JFile == "MissingToken":
+        return {"log": "Invalid token"}
+    
+    player_id = JFile["AccountName"]
+    if MatchID in MatchQueues and MatchQueues[MatchID].HostPlayerID == player_id:
+        return setHostIP(MatchID, HostIP)
+    return {"log": "error", "message": "Not the host of this match"}
 
 @app.get("/matchmaking/leavequeue")
-def appleavequeue(MatchOrPlayerID:int):
-    return leavequeue(MatchOrPlayerID=MatchOrPlayerID)
+def appleavequeue(Token: str):
+    JFile = getuserfilebytoken(Token)
+    if JFile == "MissingToken":
+        return {"log": "Invalid token"}
+    player_id = JFile["AccountName"]
+    return leavequeue(player_id)
 
 @app.get("/matchmaking/getfindmatchstate")
-def appgetfindmatchstate(MatchmakerPlayerID:int):
-    return getfindmatchstate(MatchmakerPlayerID)
+def appgetfindmatchstate(Token: str):
+    JFile = getuserfilebytoken(Token)
+    if JFile == "MissingToken":
+        return {"log": "Invalid token"}
+    
+    player_id = JFile["AccountName"]
+    # Check if player is in any active match
+    for match in MatchQueues.values():
+        if player_id in match.Players:
+            return {
+                "log": "InMatch",
+                "MatchID": match.MatchID,
+                "IsHost": match.HostPlayerID == player_id,
+                "PlayersInMatch": match.PlayersInQueue,
+                "MaxPlayers": match.MaxPlayers,
+                "Started": match.Started
+            }
+    
+    return {"log": "NotInQueue"}
 
 @app.get("/matchmaking/getmatchstate")
 def appgetmatchstate(MatchID:int):

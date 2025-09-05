@@ -1,0 +1,46 @@
+{
+    "ID": "",
+    "Pass": "$2b$12$iS2ZK8411LupRywTJpYnQ.RnMCr8T.pDE96Eul.jiGyKiFYptv6JW",
+    "AccountName": "player18",
+    "Level": 1,
+    "XPIntoLevel": 0,
+    "AccountLevel": 1,
+    "BattlePassPossessed": false,
+    "BattlePassTier": 1,
+    "BattleStarsCount": 0,
+    "VBucksCount": 0,
+    "Locker": {
+        "Skins": [
+            "CID_001_Athena_Commando_F_Default",
+            "CID_005_Athena_Commando_M_Default"
+        ],
+        "Backpacks": [],
+        "Gliders": [
+            "DefaultGlider"
+        ],
+        "Pickaxes": [
+            "DefaultPickaxe"
+        ],
+        "Contrails": [],
+        "LoadingScreens": [],
+        "Emotes": [
+            "EID_DanceMoves"
+        ],
+        "Skin": "CID_001_Athena_Commando_F_Default",
+        "Backpack": "",
+        "Glider": "DefaultGlider",
+        "Pickaxe": "DefaultPickaxe",
+        "Contrail": "",
+        "LoadingScreen": "",
+        "Emote1": "EID_DanceMoves",
+        "Emote2": "",
+        "Emote3": "",
+        "Emote4": "",
+        "Emote5": "",
+        "Emote6": ""
+    },
+    "ChallengeProgress": [],
+    "RewardsToBeClaimed": [],
+    "PreviousMatches": [],
+    "Stats": {}
+}
