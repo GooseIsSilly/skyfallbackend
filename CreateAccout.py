@@ -207,7 +207,7 @@ def appgetquestset(Token: str, Name: str):
     JFile = getuserfilebytoken(Token)
     if JFile == "MissingToken":
         return {"log": "Token does not exist"}
-    ChallengeSet = open("ChallengesSets/"+set["Name"]+".json", "r")
+    ChallengeSet = open("ChallengesSets/"+Name+".json", "r")
     JChallengeSet = json.load(ChallengeSet)
     return {"log": "ok", "questset": JChallengeSet}
 
@@ -219,7 +219,7 @@ def appgetrewardlist(Token: str):
     return {"log": "ok", "rewardlist": JFile["RewardsToBeClaimed"]}
 
 @app.get("/account/clearrewardlist")
-def appgetrewardlist(Token: str):
+def appclearrewardlist(Token: str):
     JFile = getuserfilebytoken(Token)
     if JFile == "MissingToken":
         return {"log": "Token does not exist"}
@@ -270,7 +270,7 @@ def appgetshop():
     return JShop
 
 @app.get("/shop/buy")
-def appgetshop(Player: str, Category: str, ID: int):
+def appbuyshop(Player: str, Category: str, ID: int):
     JShop = json.load(open("Shop/Shop.json", "r"))
     JFile = readuserfile(Player)
     if not canaffordvbucks(Player, JShop[Category][ID]["Price"]):
@@ -947,6 +947,7 @@ async def on_startup():
     main_loop = asyncio.get_running_loop()
     
 
-uvicorn.run(app, host="26.7.218.233", port=1234)
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
 
 
