@@ -5,23 +5,35 @@ import string
 import bcrypt
 import shutil
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-import sched
-import time
-import subprocess
-import asyncio
 from pydantic import BaseModel
+from datetime import datetime
+import glob
+
 app = FastAPI()
 
-
+# Add CORS middleware to allow Unity to connect
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 parentfolder = os.path.dirname(os.path.abspath(__file__))
 print(parentfolder)
 
 UserIDList = []
-TokenDict = {}  #"Name":"Token"
+TokenDict = {}
 
-#XP to level y = 200*y 
+# ADMIN KEY - CHANGE THIS TO A SECURE VALUE
+ADMIN_KEY = "your_secret_admin_key_12345_CHANGE_THIS"
+
+# ============================================================================
+# BASIC ENDPOINTS
+# ============================================================================
 
 @app.get("/")
 def index():
@@ -32,7 +44,7 @@ def appcreateacc(ID: str, Pass: str) -> dict[str, str]:
     return createaccount(ID, Pass)
 
 @app.get("/login/connect")
-def appconnect(ID:str, Pass:str) -> dict[str,str]:
+def appconnect(ID: str, Pass: str) -> dict[str, str]:
     return auth(ID, Pass)
 
 @app.get("/login/logout")
@@ -48,295 +60,171 @@ def appconnectbytoken(Token: str):
     JFile = getuserfilebytoken(Token)
     if JFile == "MissingToken":
         return {"log": "TokenDoesNotExist"}
+    
+    # Check ban status when connecting with token
+    ban_status = isbanned(JFile["AccountName"])
+    if ban_status["banned"]:
+        removetoken(JFile["AccountName"])
+        return {
+            "log": "AccountBanned",
+            "reason": ban_status["reason"],
+            "expiresAt": ban_status.get("expiresAt")
+        }
+    
     return {"log": "ok", "username": JFile["AccountName"]}
 
-@app.get("/account/locker/getlocker")
-def appgetlocker(Token: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    return {"log": "ok", "skins": JFile["Locker"]["Skins"], "backpacks": JFile["Locker"]["Backpacks"], "pickaxes": JFile["Locker"]["Pickaxes"], "gliders": JFile["Locker"]["Gliders"], "contrails": JFile["Locker"]["Contrails"], "loadingscreens": JFile["Locker"]["LoadingScreens"], "emotes": JFile["Locker"]["Emotes"]}
+# ============================================================================
+# BAN MANAGEMENT ENDPOINTS
+# ============================================================================
 
-@app.get("/account/locker/getequippedlocker")
-def appgetequippedlocker(Token: str)  -> dict[str, str]:
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    return {"log": "ok", "skin": JFile["Locker"]["Skin"], "backpack": JFile["Locker"]["Backpack"], "pickaxe": JFile["Locker"]["Pickaxe"], "glider": JFile["Locker"]["Glider"], "contrail": JFile["Locker"]["Contrail"], "loadingscreen": JFile["Locker"]["LoadingScreen"], "emote1": JFile["Locker"]["Emote1"], "emote2": JFile["Locker"]["Emote2"], "emote3": JFile["Locker"]["Emote3"], "emote4": JFile["Locker"]["Emote4"], "emote5": JFile["Locker"]["Emote5"], "emote6": JFile["Locker"]["Emote6"]}
+@app.get("/admin/ban")
+def appbanplayer(AdminKey: str, PlayerID: str, Reason: str, ExpiresAt: str = None):
+    if AdminKey != ADMIN_KEY:
+        return {"log": "InvalidAdminKey"}
+    return banplayer(PlayerID, Reason, "Admin", ExpiresAt)
 
-@app.get("/account/locker/setskin")
-def appsetskin(Token: str, Name: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    setskin(JFile["AccountName"], Name)
-    return {"log": "ok"}
-@app.get("/account/locker/setbackpack")
-def appsetbackpack(Token: str, Name: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    setbackpack(JFile["AccountName"], Name)
-    return {"log": "ok"}
-@app.get("/account/locker/setpickaxe")
-def appsetpickaxe(Token: str, Name: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    setpickaxe(JFile["AccountName"], Name)
-    return {"log": "ok"}
-@app.get("/account/locker/setglider")
-def appsetglider(Token: str, Name: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    setglider(JFile["AccountName"], Name)
-    return {"log": "ok"}
-@app.get("/account/locker/setcontrail")
-def appsetcontrail(Token: str, Name: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    setcontrail(JFile["AccountName"], Name)
-    return {"log": "ok"}
-@app.get("/account/locker/setloadingscreen")
-def appsetloadingscreen(Token: str, Name: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    setloadingscreen(JFile["AccountName"], Name)
-    return {"log": "ok"}
-@app.get("/account/locker/setemote1")
-def appsetemote1(Token: str, Name: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    setemote1(JFile["AccountName"], Name)
-    return {"log": "ok"}
-@app.get("/account/locker/setemote2")
-def appsetemote2(Token: str, Name: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    setemote2(JFile["AccountName"], Name)
-    return {"log": "ok"}
-@app.get("/account/locker/setemote3")
-def appsetemote3(Token: str, Name: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    setemote3(JFile["AccountName"], Name)
-    return {"log": "ok"}
-@app.get("/account/locker/setemote4")
-def appsetemote4(Token: str, Name: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    setemote4(JFile["AccountName"], Name)
-    return {"log": "ok"}
-@app.get("/account/locker/setemote5")
-def appsetemote5(Token: str, Name: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    setemote5(JFile["AccountName"], Name)
-    return {"log": "ok"}
-@app.get("/account/locker/setemote6")
-def appsetemote6(Token: str, Name: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    setemote6(JFile["AccountName"], Name)
-    return {"log": "ok"}
+@app.get("/admin/unban")
+def appunbanplayer(AdminKey: str, PlayerID: str):
+    if AdminKey != ADMIN_KEY:
+        return {"log": "InvalidAdminKey"}
+    return unbanplayer(PlayerID)
 
+@app.get("/admin/listbans")
+def applistbans(AdminKey: str):
+    if AdminKey != ADMIN_KEY:
+        return {"log": "InvalidAdminKey"}
+    return {"log": "ok", "bans": getactivebans()}
 
-@app.get("/account/activateBP")
-def appactivatebp(Token: str):
+@app.get("/player/checkban")
+def appcheckban(Token: str):
     JFile = getuserfilebytoken(Token)
     if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    if JFile["VBucksCount"] >= 950:
-        activatepremiumpass(JFile["AccountName"])
-        removevbucks(JFile["AccountName"], 950)
-        return {"log": "ok"}
-    else : 
-        return {"log": "notenoughvbucks"}
+        return {"log": "TokenDoesNotExist"}
+    
+    ban_status = isbanned(JFile["AccountName"])
+    return {"log": "ok", "banStatus": ban_status}
 
-@app.get("/account/buytiers")
-def appbuytiers(Token: str, Tiers: int):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    if JFile["VBucksCount"] >= Tiers*150:
-        givebattlestars(JFile["AccountName"], Tiers*10)
-        removevbucks(JFile["AccountName"], Tiers*150)
-        return {"log": "ok"}
-    else : 
-        return {"log": "notenoughvbucks"}
+# ============================================================================
+# REPORTING ENDPOINTS
+# ============================================================================
 
-@app.get("/account/xpinfo")
-def appgetxpinfo(Token: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    return {"log": "ok", "Level": JFile["Level"], "XPIntoLevel": JFile["XPIntoLevel"]}
-
-@app.get("/account/tierinfo")
-def appgettierinfo(Token: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    return {"log": "ok", "HasBP": JFile["BattlePassPossessed"], "Tier": JFile["BattlePassTier"], "BattleStars": JFile["BattleStarsCount"]}
-
-@app.get("/account/vbuckcount")
-def appgetvbuckcount(Token: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    return {"log": "ok", "Count": JFile["VBucksCount"]}
-
-@app.get("/account/questlog")
-def appgetquestlog(Token: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    return {"log": "ok", "questlog": JFile["ChallengeProgress"]}
-
-@app.get("/account/questset")
-def appgetquestset(Token: str, Name: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    ChallengeSet = open("ChallengesSets/"+Name+".json", "r")
-    JChallengeSet = json.load(ChallengeSet)
-    return {"log": "ok", "questset": JChallengeSet}
-
-@app.get("/account/rewardlist")
-def appgetrewardlist(Token: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    return {"log": "ok", "rewardlist": JFile["RewardsToBeClaimed"]}
-
-@app.get("/account/clearrewardlist")
-def appclearrewardlist(Token: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    clearrewardlist(JFile["AccountName"])
-    return {"log": "ok"}
-
-class ChallengeRequest(BaseModel):
+class ReportRequest(BaseModel):
     Token: str
-    ChallengeUp: str
+    ReportedPlayer: str
+    Reason: str
+    Description: str
 
-
-@app.post("/account/updatechallenges")
-def appupdatechallenges(request: ChallengeRequest):
-    Token = request.Token
-    ChallengeUp = json.loads(request.ChallengeUp)
-    JFile = getuserfilebytoken(Token)
+@app.post("/reports/submit")
+def appsubmitreport(request: ReportRequest):
+    JFile = getuserfilebytoken(request.Token)
     if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    progresschallenges(JFile["AccountName"], ChallengeUp)
+        return {"log": "TokenDoesNotExist"}
+    
+    reporter_id = JFile["AccountName"]
+    
+    if not canreport(reporter_id):
+        return {"log": "ReportLimitReached"}
+    
+    if not os.path.exists("Reports"):
+        os.makedirs("Reports")
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_id = f"{timestamp}_{reporter_id}_{request.ReportedPlayer}"
+    
+    report_data = {
+        "ReportID": report_id,
+        "Reporter": reporter_id,
+        "ReportedPlayer": request.ReportedPlayer,
+        "Reason": request.Reason,
+        "Description": request.Description,
+        "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Status": "pending"
+    }
+    
+    with open(f"Reports/{report_id}.json", "w") as reportfile:
+        json.dump(report_data, reportfile, indent=4)
+    
+    updatereportcount(reporter_id)
+    print(f"Report submitted: {reporter_id} reported {request.ReportedPlayer}")
+    
+    return {"log": "ok", "reportId": report_id}
+
+@app.get("/admin/listreports")
+def applistreports(AdminKey: str):
+    if AdminKey != ADMIN_KEY:
+        return {"log": "InvalidAdminKey"}
+    
+    if not os.path.exists("Reports"):
+        return {"log": "ok", "reports": []}
+    
+    report_files = glob.glob("Reports/*.json")
+    reports = []
+    
+    for report_file in report_files:
+        with open(report_file, "r") as f:
+            report_data = json.load(f)
+            reports.append(report_data)
+    
+    reports.sort(key=lambda x: x["Timestamp"], reverse=True)
+    return {"log": "ok", "reports": reports}
+
+class UpdateReportRequest(BaseModel):
+    AdminKey: str
+    ReportID: str
+    Status: str
+
+@app.post("/admin/updatereport")
+def appupdatereport(request: UpdateReportRequest):
+    if request.AdminKey != ADMIN_KEY:
+        return {"log": "InvalidAdminKey"}
+    
+    report_path = f"Reports/{request.ReportID}.json"
+    if not os.path.exists(report_path):
+        return {"log": "ReportNotFound"}
+    
+    with open(report_path, "r") as f:
+        report_data = json.load(f)
+    
+    report_data["Status"] = request.Status
+    
+    with open(report_path, "w") as f:
+        json.dump(report_data, f, indent=4)
+    
     return {"log": "ok"}
 
-@app.get("/account/finishgame")
-def appfinishgame(Token: str, GameStats): #elim,assist,revive,placement,maxplayers,chest,ammobox,gamemode
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    JGS = json.loads(GameStats)
-    #addmatchtostats(JFile["AccountName"], GameStats)
-    givexp(JFile["AccountName"], JGS["elim"]*100 + JGS["assist"]*25 + JGS["revive"]*50 + getplacementXP(JGS["placement"], JGS["maxplayers"]) + JGS["chest"]*10 + JGS["ammobox"]*5)
-    return {"log": "ok"}
+# ============================================================================
+# HELPER FUNCTIONS - FILE MANAGEMENT
+# ============================================================================
 
-@app.get("/account/lastmatches")
-def appgetlastmatches(Token: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Token does not exist"}
-    return {"log": "ok", "lastmatches": JFile["PreviousMatches"]}
-
-
-@app.get("/news")
-def appgetnews():
-    JNews = json.load(open("News.json", "r"))
-    return JNews
-
-@app.get("/shop")
-def appgetshop():
-    JShop = json.load(open("Shop/Shop.json", "r"))
-    return JShop
-
-@app.get("/shop/buy")
-def appbuyshop(Player: str, Category: str, ID: int):
-    JShop = json.load(open("Shop/Shop.json", "r"))
-    JFile = readuserfile(Player)
-    if not canaffordvbucks(Player, JShop[Category][ID]["Price"]):
-        return {"log": "CantAfford"}
-    givereward(Player, JShop[Category][ID]["Item"]["RewardID"], JShop[Category][ID]["Item"]["Amount"], JShop[Category][ID]["Item"]["Note"])    
-    return {"log": "ok"}
-
-def addmatchtostats(Player: str, GameStats):
-    JFile = readuserfile(Player)
-    JFile["PreviousMatches"].append(GameStats)
-    if not GameStats["gamemode"] in JFile["Stats"]:
-        JFile["Stats"][GameStats["gamemode"]] = {"elim": 0, "matchplayed": 0, "top1": 0, "top3": 0, "top6": 0}
-    JFile["Stats"][GameStats["gamemode"]]["elim"] += GameStats["elim"]
-    JFile["Stats"][GameStats["gamemode"]]["matchplayed"] +=1
-    if GameStats["placement"] <= 6:
-        JFile["Stats"][GameStats["gamemode"]]["top6"] +=1
-        if GameStats["placement"] <= 3:
-            JFile["Stats"][GameStats["gamemode"]]["top3"] +=1
-            if GameStats["placement"] == 1:
-                JFile["Stats"][GameStats["gamemode"]]["top1"] +=1
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-
-
-
-def getplacementXP(place: int, playernb: int):
-    if place == 1:
-        return 1000
-    if place == 2:
-        return 750
-    if place == 3:
-        return 500
-    return int(round(((playernb-place)/playernb)*500))
-
-def createuserfile(ID : str):
-    shutil.copy("DefaultAccount.json", "Accounts/"+ID+".json")
-    with open("Accounts/"+ID+".json", "r") as file:
+def createuserfile(ID: str):
+    shutil.copy("DefaultAccount.json", "Accounts/" + ID + ".json")
+    with open("Accounts/" + ID + ".json", "r") as file:
         print("Created account named", ID)
         UserIDList.append(ID)
-        jfile=readuserfile(ID)
+        jfile = readuserfile(ID)
         jfile["AccountName"] = ID
-        with open("Accounts/"+ID+".json", "w") as savefile:
+        with open("Accounts/" + ID + ".json", "w") as savefile:
             json.dump(jfile, savefile, indent=4)
         file.close
         return
 
 def readuserfile(ID):
-    with open("Accounts/"+ID+".json") as file:
+    with open("Accounts/" + ID + ".json") as file:
         return json.load(file)
 
 def addtoken(ID):
-
     Token = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(30))
-    TokenDict[ID]= Token
+    TokenDict[ID] = Token
     print("Created token for", ID)
     return Token
 
 def removetoken(ID):
     if ID in TokenDict:
         del TokenDict[ID]
-        print(ID+"'s token deleted.")
+        print(ID + "'s token deleted.")
         return
     else:
-        print(ID+"'s token could not be deleted as it didn't exist")
+        print(ID + "'s token could not be deleted as it didn't exist")
         return
 
 def getuserfilebytoken(Token):
@@ -347,38 +235,49 @@ def getuserfilebytoken(Token):
         print("Token not found")
         return "MissingToken"
 
-
-
 def setpass(ID, Pass):
-    jfile=readuserfile(ID)
+    jfile = readuserfile(ID)
     jfile["Pass"] = Pass.decode("utf-8")
-    with open("Accounts/"+ID+".json", "w") as savefile:
+    with open("Accounts/" + ID + ".json", "w") as savefile:
         json.dump(jfile, savefile, indent=4)
     print("SetPassword")
     return
 
+# ============================================================================
+# AUTHENTICATION FUNCTIONS
+# ============================================================================
+
 def createaccount(ID: str, Pass: str):
-    
-    if not os.path.exists("Accounts/"+ID+".json") :
-        if len(ID)<=2:
+    if not os.path.exists("Accounts/" + ID + ".json"):
+        if len(ID) <= 2:
             print("Account was not created as ID is too short")
             return {"Log": "IDTooShort"}
-        if len(Pass)<=8:
+        if len(Pass) <= 8:
             print("Account was not created as pass is too short")
             return {"log": "PassTooShort"}
         Hash = bcrypt.hashpw(Pass.encode('utf-8'), bcrypt.gensalt())
         createuserfile(ID)
         setpass(ID, Hash)
-        return{"log": "AccountCreated", "Token": addtoken(ID)}
-
+        return {"log": "AccountCreated", "Token": addtoken(ID)}
     else:
         print("Could not create account", ID, "as another account already has that name")
         return {"Log": "ExistingID"}
 
 def auth(ID: str, Pass: str):
-    if not os.path.exists("Accounts/"+ID+".json"):
+    if not os.path.exists("Accounts/" + ID + ".json"):
         print("Connection failed, username does not exist.")
         return {"log": "UserNameNotExist"}
+    
+    # Check ban status before authentication
+    ban_status = isbanned(ID)
+    if ban_status["banned"]:
+        print(f"{ID} attempted to login but is banned.")
+        return {
+            "log": "AccountBanned",
+            "reason": ban_status["reason"],
+            "expiresAt": ban_status.get("expiresAt")
+        }
+    
     JFile = readuserfile(ID)
     AccPass = JFile["Pass"]
     if bcrypt.checkpw(Pass.encode('utf-8'), AccPass.encode('utf-8')):
@@ -388,729 +287,315 @@ def auth(ID: str, Pass: str):
         print(ID, "input a wrong pass.")
         return {"log": "PassWrong"}
 
-def getxptolevel(lvl: int):
-    return 200*lvl
+# ============================================================================
+# BAN MANAGEMENT FUNCTIONS
+# ============================================================================
 
-def getxp(ID: str):
+def banplayer(ID: str, Reason: str, BannedBy: str, ExpiresAt: str = None):
+    if not os.path.exists("Accounts/" + ID + ".json"):
+        return {"log": "PlayerNotFound"}
+    
     JFile = readuserfile(ID)
-    return JFile["Level"], JFile["XPIntoLevel"]
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    JFile["BanStatus"] = {
+        "IsBanned": True,
+        "BanReason": Reason,
+        "BannedAt": current_time,
+        "BannedBy": BannedBy,
+        "ExpiresAt": ExpiresAt
+    }
+    
+    with open("Accounts/" + ID + ".json", "w") as savefile:
+        json.dump(JFile, savefile, indent=4)
+    
+    if not os.path.exists("Bans"):
+        os.makedirs("Bans")
+    
+    ban_record = {
+        "PlayerID": ID,
+        "Reason": Reason,
+        "BannedBy": BannedBy,
+        "BannedAt": current_time,
+        "ExpiresAt": ExpiresAt,
+        "IsActive": True
+    }
+    
+    with open(f"Bans/{ID}.json", "w") as banfile:
+        json.dump(ban_record, banfile, indent=4)
+    
+    removetoken(ID)
+    print(f"{ID} has been banned. Reason: {Reason}")
+    return {"log": "PlayerBanned"}
 
-def getacclvl(ID : str):
+def unbanplayer(ID: str):
+    if not os.path.exists("Accounts/" + ID + ".json"):
+        return {"log": "PlayerNotFound"}
+    
     JFile = readuserfile(ID)
-    return JFile["AccountLevel"]
-
-def getbattlestarperlvl(lvl: int):
-    if lvl%10 == 0:
-        return 10
-    if lvl%5 == 0:
-        return 5
-    return 2
-
-def givexp(ID: str, Amount: int):
-    XPToGive = Amount
-    Lvl, XPIntoLvl = getxp(ID)
-    AccLvl = getacclvl(ID)
-    while XPToGive > 0 and Lvl < 100:
-        if getxptolevel(Lvl+1)-XPIntoLvl > XPToGive:
-            XPIntoLvl += XPToGive
-            XPToGive = 0
-        else:
-            XPToGive = XPToGive - (getxptolevel(Lvl+1)-XPIntoLvl)
-            Lvl += 1
-            AccLvl += 1
-            print(ID, "reached level", Lvl)
-            givelevelreward(ID, Lvl)
-            XPIntoLvl = 0
-    setlevel(ID, Lvl, XPIntoLvl)
-    setaccountlvl(ID, AccLvl)
-    return
-
-def givelevelreward(player: str, lvl: int):
-    givebattlestars(player, getbattlestarperlvl(lvl))
-    return
-
-def setlevel(player:str, lvl: int, XPIntoLvl: int):
-    JFile = readuserfile(player)
-    JFile["Level"] = lvl
-    JFile["XPIntoLevel"] = XPIntoLvl
-    with open("Accounts/"+player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def setaccountlvl(player:str, lvl: int):
-    JFile = readuserfile(player)
-    JFile["AccountLevel"] = lvl
-    with open("Accounts/"+player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def givereward(Player:str, RewardID: int, Amount: int, Name: str): #0: vbucks, 1: XP, 2: BattleStars, 3: Skin, 4: Backpack, 5: Glider, 6: Pickaxe, 7: Contrail, 8: Loading screen, 9: Emote, 10: Challenge set
-    if RewardID == 0:
-        givevbucks(Player, Amount)
-    elif RewardID == 1:
-        givexp(Player, Amount)
-    elif RewardID == 2:
-        givebattlestars(Player, Amount)
-    elif RewardID == 3:
-        addskin(Player, Name)
-    elif RewardID == 4:
-        addbackpack(Player, Name)
-    elif RewardID == 5:
-        addglider(Player, Name)
-    elif RewardID == 6:
-        addpickaxe(Player, Name)
-    elif RewardID == 7:
-        addcontrail(Player, Name)
-    elif RewardID == 8:
-        addloadingscreen(Player, Name)
-    elif RewardID == 9:
-        addemote(Player, Name)
-    elif RewardID == 10:
-        givechallengeset(Player, Name)
-    addtorewardlist(Player, RewardID, Amount, Name)
-    return
-
-
-def addtorewardlist(Player:str, RewardID: int, Amount: int, Name: str):
-    JFile = readuserfile(Player)
-    JFile["RewardsToBeClaimed"].append({"RewardID": RewardID, "Amount": Amount, "Name": Name})
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def clearrewardlist(Player: str):
-    JFile = readuserfile(Player)
-    JFile["RewardsToBeClaimed"] = []
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def givechallengeset(Player: str, SetName: str):
-    JFile = readuserfile(Player)
-    for set in JFile["ChallengeProgress"]:
-        if set["Name"] == SetName:
-            return
-    ChallengeSet = open("ChallengesSets/"+SetName+".json", "r")
-    JChallengeSet = json.load(ChallengeSet)
-    JFile["ChallengeProgress"].append({"Name": SetName, "Completed": False, "Progression": 0, "Quests": [{"Completed": False, "Progress": 0} for i in range(JChallengeSet["ChallengeCount"])]})
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def progresschallenges(Player: str, challengeup):    #challengeup is a dictionary of the challgenges progressed:
-    challengelist = challengeup.keys()
-    JFile = readuserfile(Player)
-    RewardsToGive=[]   #Rewards are given after the process to avoid save bugs
-    for set in JFile["ChallengeProgress"]:
-        if not set["Completed"]:
-            ChallengeSet = open("ChallengesSets/"+set["Name"]+".json", "r")
-            JChallengeSet = json.load(ChallengeSet)
-            TempCompleted = 0
-            QuestID=-1
-            for quest in set["Quests"]:
-                QuestID += 1
-                if quest["Completed"]:
-                    TempCompleted += 1
-                else:
-                    if JChallengeSet["ChallengeList"][QuestID]["ChallengeName"] in challengelist:
-                        quest["Progress"] += challengeup[JChallengeSet["ChallengeList"][QuestID]["ChallengeName"]]
-                        if quest["Progress"] >= JChallengeSet["ChallengeList"][QuestID]["AmountToDo"]:
-                            quest["Completed"] = True
-                            TempCompleted += 1
-                            RewardsToGive.append({"RewardID": JChallengeSet["ChallengeList"][QuestID]["Reward"]["RewardID"], "Amount": JChallengeSet["ChallengeList"][QuestID]["Reward"]["Amount"], "Name": JChallengeSet["ChallengeList"][QuestID]["Reward"]["Name"]})
-            if set["Progression"] < JChallengeSet["ChallengesToGetReward"] and TempCompleted >= JChallengeSet["ChallengesToGetReward"]:
-                print("COMPLETED CHALLENGESET REWARD")
-                RewardsToGive.append({"RewardID": JChallengeSet["Reward"]["RewardID"], "Amount": JChallengeSet["Reward"]["Amount"], "Name": JChallengeSet["Reward"]["Name"]})
-            set["Progression"] = TempCompleted
-            if TempCompleted == JChallengeSet["ChallengeCount"]:
-                set["Completed"] = True
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    for i in RewardsToGive:
-        givereward(Player, i["RewardID"], i["Amount"], i["Name"])
-    return                
-                
-
-
-
-def givebattlestars(Player: str, Amount: int):
-    StarsToGive = Amount
-    Tier, Stars = gettier(Player)
-    while StarsToGive > 0 and Tier < 100:
-        if 10-Stars > StarsToGive:
-            Stars += StarsToGive
-            StarsToGive = 0
-            settier(Player, Tier, Stars)
-        else:
-            StarsToGive = StarsToGive - (10-Stars)
-            Tier += 1
-            print(Player, "reached tier", Tier)
-            Stars = 0
-            settier(Player, Tier, Stars)
-            givefreetierreward(Player, Tier)
-            givepremiumtierreward(Player, Tier)
-            
-    if StarsToGive>0 : 
-        givexp(Player, StarsToGive*100) #each overflowing battlestar is converted to 100 xp
-    settier(Player, Tier, Stars)
-    return
-
-def gettier(Player: str):
-    JFile = readuserfile(Player)
-    return JFile["BattlePassTier"], JFile["BattleStarsCount"]
-
-def settier(player:str, tier: int, stars: int):
-    JFile = readuserfile(player)
-    JFile["BattlePassTier"] = tier
-    JFile["BattleStarsCount"] = stars
-    with open("Accounts/"+player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def activatepremiumpass(Player: str):
-    JFile = readuserfile(Player)
-    JFile["BattlePassPossessed"] = True
-    Tier, _ = gettier(Player)
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    for i in range(Tier):
-        givepremiumtierreward(Player, i+1)
-
-
-
-def givefreetierreward(Player: str, Tier: int):
-    JFile = readuserfile(Player)
-    BP = json.load(open("BattlePass/FreePass.json"))
-    if str(Tier) in BP["Rewards"]:
-        givereward(Player, BP["Rewards"][str(Tier)]["RewardID"], BP["Rewards"][str(Tier)]["Amount"], BP["Rewards"][str(Tier)]["Name"])
-    return
+    JFile["BanStatus"]["IsBanned"] = False
     
-
-def givepremiumtierreward(Player: str, Tier: int):
-    JFile = readuserfile(Player)
+    with open("Accounts/" + ID + ".json", "w") as savefile:
+        json.dump(JFile, savefile, indent=4)
     
-    if JFile["BattlePassPossessed"]:
-        BP = json.load(open("BattlePass/Pass.json"))
-        givereward(Player, BP["Rewards"][str(Tier)]["RewardID"], BP["Rewards"][str(Tier)]["Amount"], BP["Rewards"][str(Tier)]["Name"])
-        return
-
-
-def givevbucks(Player: str, Amount: int):
-    JFile = readuserfile(Player)
-    JFile["VBucksCount"] = JFile["VBucksCount"] + Amount
-    print("Gave", Amount, "VBucks to", Player)
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def canaffordvbucks(Player: str, Amount: int):
-    JFile = readuserfile(Player)
-    return JFile["VBucksCount"] >= Amount
-
-def removevbucks(Player: str, Amount: int):
-    JFile = readuserfile(Player)
-    JFile["VBucksCount"] = JFile["VBucksCount"] - Amount
-    print("Removed", Amount, "VBucks from", Player)
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-
-
-
-
-
-def setskin(Player: str, CosmeticName: str):
-    JFile = readuserfile(Player)
-    JFile["Locker"]["Skin"] = CosmeticName
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def setbackpack(Player: str, CosmeticName: str):
-    JFile = readuserfile(Player)
-    JFile["Locker"]["Backpack"] = CosmeticName
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def setglider(Player: str, CosmeticName: str):
-    JFile = readuserfile(Player)
-    JFile["Locker"]["Glider"] = CosmeticName
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def setpickaxe(Player: str, CosmeticName: str):
-    JFile = readuserfile(Player)
-    JFile["Locker"]["Pickaxe"] = CosmeticName
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def setcontrail(Player: str, CosmeticName: str):
-    JFile = readuserfile(Player)
-    JFile["Locker"]["Contrail"] = CosmeticName
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def setloadingscreen(Player: str, CosmeticName: str):
-    JFile = readuserfile(Player)
-    JFile["Locker"]["LoadingScreen"] = CosmeticName
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def setemote1(Player: str, CosmeticName: str):
-    JFile = readuserfile(Player)
-    JFile["Locker"]["Emote1"] = CosmeticName
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def setemote2(Player: str, CosmeticName: str):
-    JFile = readuserfile(Player)
-    JFile["Locker"]["Emote2"] = CosmeticName
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def setemote3(Player: str, CosmeticName: str):
-    JFile = readuserfile(Player)
-    JFile["Locker"]["Emote3"] = CosmeticName
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def setemote4(Player: str, CosmeticName: str):
-    JFile = readuserfile(Player)
-    JFile["Locker"]["Emote4"] = CosmeticName
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def setemote5(Player: str, CosmeticName: str):
-    JFile = readuserfile(Player)
-    JFile["Locker"]["Emote5"] = CosmeticName
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def setemote6(Player: str, CosmeticName: str):
-    JFile = readuserfile(Player)
-    JFile["Locker"]["Emote6"] = CosmeticName
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-
-def getequippedlocker(Player: str):
-    JFile = readuserfile(Player)
-    return [JFile["Locker"]["Skin"], JFile["Locker"]["Backpack"], JFile["Locker"]["Glider"], JFile["Locker"]["Pickaxe"], JFile["Locker"]["Contrail"], JFile["Locker"]["LoadingScreen"], JFile["Locker"]["Emote1"], JFile["Locker"]["Emote2"], JFile["Locker"]["Emote3"], JFile["Locker"]["Emote4"], JFile["Locker"]["Emote5"], JFile["Locker"]["Emote6"]]
-
-def getlocker(Player: str):
-    JFile = readuserfile(Player)
-    return [JFile["Locker"]["Skins"], JFile["Locker"]["Backpacks"], JFile["Locker"]["Gliders"], JFile["Locker"]["Pickaxes"], JFile["Locker"]["Contrails"], JFile["Locker"]["LoadingScreens"], JFile["Locker"]["Emotes"]]
-
-
-def addskin(Player: str, Name: str):
-    JFile=readuserfile(Player)
-    JFile["Locker"]["Skins"].extend([Name])
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def addbackpack(Player: str, Name: str):
-    JFile=readuserfile(Player)
-    JFile["Locker"]["Backpacks"].extend([Name])
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def addglider(Player: str, Name: str):
-    JFile=readuserfile(Player)
-    JFile["Locker"]["Gliders"].extend([Name])
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def addpickaxe(Player: str, Name: str):
-    JFile=readuserfile(Player)
-    JFile["Locker"]["Pickaxes"].extend([Name])
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def addcontrail(Player: str, Name: str):
-    JFile=readuserfile(Player)
-    JFile["Locker"]["Contrails"].extend([Name])
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def addloadingscreen(Player: str, Name: str):
-    JFile=readuserfile(Player)
-    JFile["Locker"]["LoadingScreens"].extend([Name])
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-def addemote(Player: str, Name: str):
-    JFile=readuserfile(Player)
-    JFile["Locker"]["Emotes"].extend([Name])
-    with open("Accounts/"+Player+".json", "w") as savefile:
-        json.dump(JFile, savefile, indent=4)
-    return
-
-
-#Matchmaking system
-
-scheduler = sched.scheduler(time.time, time.sleep)
-
-class MatchQueue:
-    def __init__(self, MaxPlayers: int = 15, MaxTime: int = 120, MatchID: int = None):
-        self.MaxPlayers = MaxPlayers
-        self.MaxTime = MaxTime
-        self.Started = False
-        self.MatchID = MatchID or random.randint(1000000, 9999999)
-        self.PlayersInQueue = 0
-        self.Players = []  # List to track players in the match
-        self.HostPlayerID = None  # First player becomes host
-        self.HostIP = None  # Host's IP address for listen server
-        #if MaxTime != 0:
-        #    print("Delay of", MaxTime,"seconds")
-        #    scheduler.enter(delay=MaxTime, action=MatchTimeOut, argument=(MatchID,), priority=1)
-        #    scheduler.run()
-
-MatchQueues = {} #ID(int):Queue(Object)
-PlayerQueue = []
-PlayerMoved = {} #PlayerID(int):MatchID(int), used to give players their matchID
-
-main_loop = None
-server_process = None
-def start_server():
-    global server_process
-    exe_path = r"D:\Unreal Projects\Meteor\Builds\1.0.0 Beta 2\Server\BRSolo\WindowsServer\MeteorServer.exe"
-
-    if not os.path.exists(exe_path):
-        print("Executable not found.")
-        return
-
-    server_process = subprocess.Popen(exe_path)
-    print(f"Server started with PID: {server_process.pid}")
-
-def stop_server():
-    global server_process
-    print(f"Terminating process with PID {server_process.pid}")
-    server_process.terminate()
-    server_process.wait()
-    server_process = None
-    print("Server terminated.")
-
-
-
-def creatematchqueue(MaxPlrs: int = 15, MaxTme: int = 120):
-    tempmatch = MatchQueue(MaxPlayers=MaxPlrs, MaxTime=MaxTme)
-    MatchQueues[tempmatch.MatchID] = tempmatch
-    print("LISTEN SERVER MATCH CREATED with ID", tempmatch.MatchID, "- Max Players:", MaxPlrs)
-    fillqueue(tempmatch.MatchID)
-    if MaxTme > 0 and main_loop:
-        main_loop.create_task(starttimeouttimer(tempmatch.MatchID, MaxTme))
-    return tempmatch.MatchID
-
-async def starttimeouttimer(MatchID: int, Time: int):
-    print("Started time out timer for match", MatchID)
-    await asyncio.sleep(Time)
-    MatchTimeOut(MatchID)
-
-def MatchTimeOut(MatchID:int):
-    if MatchID in MatchQueues:
-        print("CALLED MATCH TIMEOUT")
-        if not MatchQueues[MatchID].Started:
-            StartMatch(MatchID)
-            print("Match", MatchID, "timed out.")
-    return
-
-def StartMatch(MatchID: int):
-    if MatchID in MatchQueues:
-        if not MatchQueues[MatchID].Started:
-            MatchQueues[MatchID].Started = True
-            print("LISTEN SERVER Match", MatchID, "started with host:", MatchQueues[MatchID].HostPlayerID)
-            if main_loop:
-                main_loop.create_task(startdeletetimer(MatchID))
-    return
-
-async def startdeletetimer(MatchID: int):
-    print("Started timer to delete match", MatchID)
-    await asyncio.sleep(20)
-    DeleteMatchFromList(MatchID)
-
-
-def DeleteMatchFromList(MatchID:int):
-    del MatchQueues[MatchID]
-    print("MatchMaking : Removed match", MatchID, "from the list")
-    return
-
-def findmatch(PlayerToken: str = None):
-    # Look for an available match that's not full and not started
-    for match in MatchQueues.values():
-        if not match.Started and match.PlayersInQueue < match.MaxPlayers:
-            # Add player to match
-            match.PlayersInQueue += 1
-            if PlayerToken:
-                match.Players.append(PlayerToken)
-                # First player becomes the host
-                if match.HostPlayerID is None:
-                    match.HostPlayerID = PlayerToken
-                    print(f"Player {PlayerToken} is now HOST for match {match.MatchID}")
-                else:
-                    print(f"Player {PlayerToken} joined match {match.MatchID} as CLIENT")
-            
-            # Start match if it's full (15 players)
-            if match.PlayersInQueue >= match.MaxPlayers:
-                StartMatch(match.MatchID)
-            
-            return {
-                "MatchID": match.MatchID,
-                "IsHost": match.HostPlayerID == PlayerToken,
-                "PlayersInMatch": match.PlayersInQueue,
-                "MaxPlayers": match.MaxPlayers
-            }
+    if os.path.exists(f"Bans/{ID}.json"):
+        if not os.path.exists("Bans/Archive"):
+            os.makedirs("Bans/Archive")
+        shutil.move(f"Bans/{ID}.json", f"Bans/Archive/{ID}.json")
     
-    # No available match found, create a new one
-    new_match_id = creatematchqueue()
-    # Try to join the newly created match
-    return findmatch(PlayerToken)
+    print(f"{ID} has been unbanned.")
+    return {"log": "PlayerUnbanned"}
+
+def checkbanexpired(ID: str):
+    JFile = readuserfile(ID)
     
-def leavequeue(PlayerToken: str):
-    # Find and remove player from any match they're in
-    for match_id, match in MatchQueues.items():
-        if PlayerToken in match.Players:
-            match.Players.remove(PlayerToken)
-            match.PlayersInQueue -= 1
-            print(f"Player {PlayerToken} left match {match_id}")
-            
-            # HOST MIGRATION: If the host left, assign new random host
-            if match.HostPlayerID == PlayerToken:
-                if match.Players:  # If there are still players
-                    # Select random player as new host
-                    import random
-                    new_host = random.choice(match.Players)
-                    old_host_ip = match.HostIP
-                    match.HostPlayerID = new_host
-                    match.HostIP = None  # New host needs to set their IP
-                    print(f"🔄 HOST MIGRATION: New host for match {match_id}: {new_host} (replacing {PlayerToken})")
-                    print(f"   Previous host IP {old_host_ip} is now invalid - new host must set IP")
-                else:
-                    match.HostPlayerID = None
-                    match.HostIP = None
-                    print(f"Match {match_id} has no players left - host cleared")
-                    
-            # Fill the spot if match hasn't started
-            if not match.Started:
-                fillqueue(match_id)
-            return {"log": "OK", "message": "Left match", "hostMigrated": match.HostPlayerID != PlayerToken if PlayerToken in [match.HostPlayerID] else False}
+    if "BanStatus" not in JFile or not JFile["BanStatus"]["IsBanned"]:
+        return False
     
-    # Check if player is in general queue
-    player_id = None
+    expires_at = JFile["BanStatus"].get("ExpiresAt")
+    if expires_at is None:
+        return False
+    
     try:
-        player_id = int(PlayerToken)
+        expire_time = datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S")
+        if datetime.now() >= expire_time:
+            unbanplayer(ID)
+            return True
     except:
         pass
-        
-    if player_id and player_id in PlayerQueue:
-        PlayerQueue.remove(player_id)
-        return {"log": "OK", "message": "Left general queue"}
     
-    if player_id and player_id in PlayerMoved:
-        match_id = PlayerMoved[player_id]
-        del PlayerMoved[player_id]
-        return leavequeue(str(match_id))
+    return False
+
+def isbanned(ID: str):
+    if not os.path.exists("Accounts/" + ID + ".json"):
+        return {"banned": False}
+    
+    checkbanexpired(ID)
+    JFile = readuserfile(ID)
+    
+    if "BanStatus" not in JFile:
+        JFile["BanStatus"] = {
+            "IsBanned": False,
+            "BanReason": "",
+            "BannedAt": "",
+            "BannedBy": "",
+            "ExpiresAt": None
+        }
+        with open("Accounts/" + ID + ".json", "w") as savefile:
+            json.dump(JFile, savefile, indent=4)
+        return {"banned": False}
+    
+    if JFile["BanStatus"]["IsBanned"]:
+        return {
+            "banned": True,
+            "reason": JFile["BanStatus"]["BanReason"],
+            "bannedAt": JFile["BanStatus"]["BannedAt"],
+            "expiresAt": JFile["BanStatus"]["ExpiresAt"]
+        }
+    
+    return {"banned": False}
+
+def getactivebans():
+    if not os.path.exists("Bans"):
+        return []
+    
+    ban_files = glob.glob("Bans/*.json")
+    active_bans = []
+    
+    for ban_file in ban_files:
+        with open(ban_file, "r") as f:
+            ban_data = json.load(f)
+            if ban_data.get("IsActive", True):
+                active_bans.append(ban_data)
+    
+    return active_bans
+
+# ============================================================================
+# REPORT MANAGEMENT FUNCTIONS
+# ============================================================================
+
+def canreport(ID: str):
+    JFile = readuserfile(ID)
+    
+    if "ReportData" not in JFile:
+        JFile["ReportData"] = {
+            "LastReportTime": "",
+            "ReportCount": 0
+        }
+        with open("Accounts/" + ID + ".json", "w") as savefile:
+            json.dump(JFile, savefile, indent=4)
+        return True
+    
+    last_report = JFile["ReportData"].get("LastReportTime", "")
+    if last_report == "":
+        return True
+    
+    try:
+        last_time = datetime.strptime(last_report, "%Y-%m-%d %H:%M:%S")
+        time_diff = (datetime.now() - last_time).total_seconds()
         
-    return {"log": "Player not found in any queue"}
-
-def fillqueue(MatchID: int):
-    # Fill match with players from the general queue
-    if MatchID in MatchQueues:
-        match = MatchQueues[MatchID]
-        while match.PlayersInQueue < match.MaxPlayers and PlayerQueue:
-            player_id = PlayerQueue.pop(0)
-            match.PlayersInQueue += 1
-            match.Players.append(str(player_id))
-            PlayerMoved[player_id] = MatchID
-            
-            # Set first player as host if no host yet
-            if match.HostPlayerID is None:
-                match.HostPlayerID = str(player_id)
-                print(f"Player {player_id} is now HOST for match {MatchID}")
-                
-            # Start match if full
-            if match.PlayersInQueue >= match.MaxPlayers:
-                StartMatch(MatchID)
-                break
-    return
-
-def getfindmatchstate(MatchmakerPlayerID:int):
-    if MatchmakerPlayerID in PlayerQueue:
-        return{"log":"InQueue","PosInQueue": PlayerQueue.index(MatchmakerPlayerID), "PlayersInQueue": len(PlayerQueue)}
-    if MatchmakerPlayerID in PlayerMoved:
-        TempMatchID = PlayerMoved[MatchmakerPlayerID]
-        TempPlayersInQueue = MatchQueues[PlayerMoved[MatchmakerPlayerID]].PlayersInQueue
-        del PlayerMoved[MatchmakerPlayerID]
-        return{"log": "FoundMatch","MatchID": TempMatchID,"PlayersInQueue": TempPlayersInQueue}
-    return {"log": "MatchmakerPlayerID not found"}
-
-def getmatchstate(MatchID: int):
-    if MatchID in MatchQueues:
-        match = MatchQueues[MatchID]
-        if match.Started:
-            return {
-                "log": "ok", 
-                "status": "started",
-                "HostIP": match.HostIP,
-                "HostPlayerID": match.HostPlayerID,
-                "PlayersInMatch": match.PlayersInQueue,
-                "MaxPlayers": match.MaxPlayers
-            }
+        if time_diff < 3600:
+            report_count = JFile["ReportData"].get("ReportCount", 0)
+            if report_count >= 5:
+                return False
         else:
-            return {
-                "log": "ok", 
-                "status": "waiting",
-                "PlayersInQueue": match.PlayersInQueue,
-                "MaxPlayers": match.MaxPlayers,
-                "HostPlayerID": match.HostPlayerID
-            }
-    return {"log": "error", "message": "Match not found"}
-
-@app.get("/matchmaking/dev/creatematch")   #Called by a bat file for now
-def appcreatematch(Pass: str, MaxPlayers: int = 15, MaxTime: int = 120):
-    if Pass == "azertyuiop":
-        return creatematchqueue(MaxPlrs=MaxPlayers, MaxTme=MaxTime)
+            JFile["ReportData"]["ReportCount"] = 0
+            with open("Accounts/" + ID + ".json", "w") as savefile:
+                json.dump(JFile, savefile, indent=4)
+    except:
+        pass
     
-@app.get("/matchmaking/dev/startmatch")    #Called by a bat file if the launch is not automatic
-def appstartmatch(MatchID:int, Pass: str):
-    if Pass == "azertyuiop":
-        #return StartMatch(MatchID=MatchID)
-        return StartMatch(list(MatchQueues.keys())[0])
-    
-# New listen server functions
-def setHostIP(MatchID: int, HostIP: str):
-    if MatchID in MatchQueues:
-        MatchQueues[MatchID].HostIP = HostIP
-        print(f"Host IP set for match {MatchID}: {HostIP}")
-        return {"log": "ok"}
-    return {"log": "error", "message": "Match not found"}
+    return True
 
-def getServerInfo():
-    """Get server information including Replit domain"""
-    import os
-    replit_domain = os.getenv('REPLIT_DEV_DOMAIN', 'localhost')
+def updatereportcount(ID: str):
+    JFile = readuserfile(ID)
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    if "ReportData" not in JFile:
+        JFile["ReportData"] = {
+            "LastReportTime": current_time,
+            "ReportCount": 1
+        }
+    else:
+        last_report = JFile["ReportData"].get("LastReportTime", "")
+        try:
+            last_time = datetime.strptime(last_report, "%Y-%m-%d %H:%M:%S")
+            time_diff = (datetime.now() - last_time).total_seconds()
+            
+            if time_diff >= 3600:
+                JFile["ReportData"]["ReportCount"] = 1
+            else:
+                JFile["ReportData"]["ReportCount"] = JFile["ReportData"].get("ReportCount", 0) + 1
+        except:
+            JFile["ReportData"]["ReportCount"] = 1
+        
+        JFile["ReportData"]["LastReportTime"] = current_time
+    
+    with open("Accounts/" + ID + ".json", "w") as savefile:
+        json.dump(JFile, savefile, indent=4)
+
+
+
+@app.get("/account/getgamedata")
+def appgetgamedata(Token: str):
+    JFile = getuserfilebytoken(Token)
+    if JFile == "MissingToken":
+        return {"log": "TokenDoesNotExist"}
+    
     return {
         "log": "ok",
-        "server_domain": f"https://{replit_domain}",
-        "api_base": f"https://{replit_domain}",
-        "websocket_url": f"wss://{replit_domain}",
-        "environment": "replit"
+        "Level": JFile.get("Level", 1),
+        "XP": JFile.get("XP", 0),
+        "CloudCoins": JFile.get("CloudCoins", 0),
+        "OwnedSkins": JFile.get("OwnedSkins", []),
+        "EquippedSkin": JFile.get("EquippedSkin", "DefaultSkin")
     }
 
-def migrateHostManually(MatchID: int, NewHostPlayerID: str):
-    """Manually migrate host to specific player (admin function)"""
-    if MatchID in MatchQueues:
-        match = MatchQueues[MatchID]
-        if NewHostPlayerID in match.Players:
-            old_host = match.HostPlayerID
-            match.HostPlayerID = NewHostPlayerID
-            match.HostIP = None  # New host must set their IP
-            print(f"🔄 MANUAL HOST MIGRATION: Match {MatchID} host changed from {old_host} to {NewHostPlayerID}")
-            return {"log": "ok", "oldHost": old_host, "newHost": NewHostPlayerID}
-        return {"log": "error", "message": "New host player not in match"}
-    return {"log": "error", "message": "Match not found"}
+class GameDataUpdate(BaseModel):
+    Token: str
+    Level: int = None
+    XP: int = None
+    CloudCoins: int = None
+    OwnedSkins: list = None
+    EquippedSkin: str = None
 
-# Token-based matchmaking API endpoints
-@app.get("/matchmaking/findmatch")
-def appfindmatch(Token: str = None):
-    if Token:
-        # Get username from token for tracking
-        JFile = getuserfilebytoken(Token)
-        if JFile == "MissingToken":
-            return {"log": "Invalid token"}
-        player_id = JFile["AccountName"]
+@app.post("/account/updategamedata")
+def appupdategamedata(request: GameDataUpdate):
+    JFile = getuserfilebytoken(request.Token)
+    if JFile == "MissingToken":
+        return {"log": "TokenDoesNotExist"}
+    
+    player_id = JFile["AccountName"]
+    
+    # Update only provided fields
+    if request.Level is not None:
+        JFile["Level"] = request.Level
+    if request.XP is not None:
+        JFile["XP"] = request.XP
+    if request.CloudCoins is not None:
+        JFile["CloudCoins"] = request.CloudCoins
+    if request.OwnedSkins is not None:
+        JFile["OwnedSkins"] = request.OwnedSkins
+    if request.EquippedSkin is not None:
+        JFile["EquippedSkin"] = request.EquippedSkin
+    
+    with open("Accounts/" + player_id + ".json", "w") as savefile:
+        json.dump(JFile, savefile, indent=4)
+    
+    print(f"Game data updated for {player_id}")
+    return {"log": "ok"}
+
+@app.get("/account/addcoins")
+def appaddcoins(Token: str, Amount: int):
+    JFile = getuserfilebytoken(Token)
+    if JFile == "MissingToken":
+        return {"log": "TokenDoesNotExist"}
+    
+    player_id = JFile["AccountName"]
+    current_coins = JFile.get("CloudCoins", 0)
+    JFile["CloudCoins"] = current_coins + Amount
+    
+    with open("Accounts/" + player_id + ".json", "w") as savefile:
+        json.dump(JFile, savefile, indent=4)
+    
+    return {"log": "ok", "NewTotal": JFile["CloudCoins"]}
+
+@app.get("/account/addxp")
+def appaddxp(Token: str, Amount: int):
+    JFile = getuserfilebytoken(Token)
+    if JFile == "MissingToken":
+        return {"log": "TokenDoesNotExist"}
+    
+    player_id = JFile["AccountName"]
+    current_xp = JFile.get("XP", 0)
+    current_level = JFile.get("Level", 1)
+    
+    new_xp = current_xp + Amount
+    xp_for_next_level = 1000  # XP needed per level
+    
+    # Level up logic
+    while new_xp >= xp_for_next_level and current_level < 100:
+        new_xp -= xp_for_next_level
+        current_level += 1
+        print(f"{player_id} reached level {current_level}!")
+    
+    JFile["XP"] = new_xp
+    JFile["Level"] = current_level
+    
+    with open("Accounts/" + player_id + ".json", "w") as savefile:
+        json.dump(JFile, savefile, indent=4)
+    
+    return {"log": "ok", "Level": current_level, "XP": new_xp}
+
+@app.get("/account/unlockskin")
+def appunlockskin(Token: str, SkinID: str):
+    JFile = getuserfilebytoken(Token)
+    if JFile == "MissingToken":
+        return {"log": "TokenDoesNotExist"}
+    
+    player_id = JFile["AccountName"]
+    owned_skins = JFile.get("OwnedSkins", [])
+    
+    if SkinID not in owned_skins:
+        owned_skins.append(SkinID)
+        JFile["OwnedSkins"] = owned_skins
+        
+        with open("Accounts/" + player_id + ".json", "w") as savefile:
+            json.dump(JFile, savefile, indent=4)
+        
+        return {"log": "ok", "message": "Skin unlocked"}
     else:
-        player_id = None
-    return findmatch(player_id)
+        return {"log": "AlreadyOwned"}
 
-@app.get("/matchmaking/setHostIP")
-def appsetHostIP(Token: str, MatchID: int, HostIP: str):
-    # Verify the player is the host of this match
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Invalid token"}
-    
-    player_id = JFile["AccountName"]
-    if MatchID in MatchQueues and MatchQueues[MatchID].HostPlayerID == player_id:
-        return setHostIP(MatchID, HostIP)
-    return {"log": "error", "message": "Not the host of this match"}
-
-@app.get("/server/info")
-def appgetserverinfo():
-    """Get server and connection information"""
-    return getServerInfo()
-
-@app.get("/matchmaking/dev/migratehost")
-def appmigratehost(Pass: str, MatchID: int, NewHostPlayerID: str):
-    """Admin function to manually migrate host"""
-    if Pass == "azertyuiop":
-        return migrateHostManually(MatchID, NewHostPlayerID)
-    return {"log": "error", "message": "Invalid admin password"}
-
-@app.get("/matchmaking/leavequeue")
-def appleavequeue(Token: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Invalid token"}
-    player_id = JFile["AccountName"]
-    return leavequeue(player_id)
-
-@app.get("/matchmaking/getfindmatchstate")
-def appgetfindmatchstate(Token: str):
-    JFile = getuserfilebytoken(Token)
-    if JFile == "MissingToken":
-        return {"log": "Invalid token"}
-    
-    player_id = JFile["AccountName"]
-    # Check if player is in any active match
-    for match in MatchQueues.values():
-        if player_id in match.Players:
-            return {
-                "log": "InMatch",
-                "MatchID": match.MatchID,
-                "IsHost": match.HostPlayerID == player_id,
-                "PlayersInMatch": match.PlayersInQueue,
-                "MaxPlayers": match.MaxPlayers,
-                "Started": match.Started
-            }
-    
-    return {"log": "NotInQueue"}
-
-@app.get("/matchmaking/getmatchstate")
-def appgetmatchstate(MatchID:int):
-    return getmatchstate(MatchID)
-
-
-
-#givechallengeset("123456", "Week0")
-#progresschallenges("123456", {"AmmoBoxes":30,"Kills":2})
-#progresschallenges("123456", {"Kills": 4})
-#progresschallenges("123456", {"ChestTilted": 8})
-#progresschallenges("123456", {"DamageAR": 1040})
-
-@app.on_event("startup")
-async def on_startup():
-    global main_loop
-    
-    main_loop = asyncio.get_running_loop()
-    
+# ============================================================================
+# RUN SERVER
+# ============================================================================
 
 if __name__ == "__main__":
+    print("=" * 80)
+    print("SKYFALL BACKEND SERVER STARTING")
+    print("=" * 80)
+    print(f"Admin Key: {ADMIN_KEY}")
+    print("IMPORTANT: Change the ADMIN_KEY to a secure value!")
+    print("=" * 80)
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
