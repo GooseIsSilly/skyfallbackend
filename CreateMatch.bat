@@ -1,1 +1,0 @@
-curl "http://26.7.218.233:1234/matchmaking/dev/creatematch?Pass=azertyuiop&ServerIP=26.7.218.233&MaxPlayers=3&MaxTime=15"
