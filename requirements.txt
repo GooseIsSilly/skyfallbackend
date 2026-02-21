@@ -1,4 +1,4 @@
-bcrypt
-fastapi
-uvicorn
-pydantic
+bcrypt==4.2.1
+fastapi==0.129.0
+uvicorn==0.41.0
+pydantic==2.12.5
