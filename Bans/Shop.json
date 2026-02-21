@@ -1,0 +1,6 @@
+{
+    "Featured":[{"Price": 100, "Item": {"RewardID": 3, "Amount": 1, "Name": ""}}, {"Price": 100, "Item": {"RewardID": 3, "Amount": 1, "Name": ""}}],
+
+    "Daily":[{"Price": 100, "Item": {"RewardID": 3, "Amount": 1, "Name": ""}}, {"Price": 100, "Item": {"RewardID": 3, "Amount": 1, "Name": ""}}, {"Price": 100, "Item": {"RewardID": 3, "Amount": 1, "Name": ""}}, {"Price": 100, "Item": {"RewardID": 3, "Amount": 1, "Name": ""}}]
+
+}
